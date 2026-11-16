@@ -11,7 +11,9 @@ export function serverDefault(env){
  if(!env.SERVER_DEFAULT_PASSWORD||env.SERVER_DEFAULT_PASSWORD.length<12)throw Error('SERVER_DEFAULT_PASSWORD debe tener al menos 12 caracteres.');
  return {...connection({provider:env.SERVER_DEFAULT_PROVIDER||'openai',key:env.SERVER_DEFAULT_API_KEY,model:env.SERVER_DEFAULT_MODEL,endpoint:env.SERVER_DEFAULT_ENDPOINT}),password:env.SERVER_DEFAULT_PASSWORD};
 }
-export function createApp({defaults=null,fetcher=fetch,now=Date.now}={}){
+const escapeRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+export function createApp({defaults=null,fetcher=fetch,now=Date.now,allowedHosts=[]}={}){
+ const hostRe=new RegExp(`^(${['localhost','127\\.0\\.0\\.1','\\[::1\\]',...allowedHosts.map(escapeRe)].join('|')})(:\\d+)?$`);
  const sessions=new Map(),attempts=new Map();const ttl=86400000;
  const tokenFor=req=>(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('cocgar_access='))?.slice(14);
  const authorized=req=>{const token=tokenFor(req),expires=sessions.get(token);if(expires>now())return true;sessions.delete(token);return false;};
@@ -21,8 +23,8 @@ export function createApp({defaults=null,fetcher=fetch,now=Date.now}={}){
   try{
    // Reject DNS rebinding and cross-origin requests before reading any credentials.
    const host=req.headers.host||'';
-   if(!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host))return json(403,{error:'Host no permitido.'});
-   if(req.headers.origin&&req.headers.origin!==`http://${host}`)return json(403,{error:'Origen no permitido.'});
+   if(!hostRe.test(host))return json(403,{error:'Host no permitido.'});
+   if(req.headers.origin){let sameHost=false;try{sameHost=new URL(req.headers.origin).host===host;}catch{}if(!sameHost)return json(403,{error:'Origen no permitido.'});}
    if(req.method==='GET'&&req.url==='/api/config')return json(200,{serverDefault:{available:!!defaults,provider:defaults?.provider||'',model:defaults?.model||'',unlocked:authorized(req)}});
    if(req.method==='POST'&&req.url.startsWith('/api/')){
     if(!req.headers['content-type']?.startsWith('application/json'))return json(415,{error:'Se requiere application/json.'});
@@ -61,5 +63,6 @@ export function createApp({defaults=null,fetcher=fetch,now=Date.now}={}){
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
  try{process.loadEnvFile?.();}catch(err){if(err.code!=='ENOENT')throw err;}
  const defaults=serverDefault(process.env),port=Number(process.env.PORT||3000);
- createApp({defaults}).listen(port,'127.0.0.1',()=>console.log(`co-CGAR listo en http://localhost:${port}\nServer default: ${defaults?defaults.provider+' / '+defaults.model+' (protegido por contraseña)':'sin configurar; usa una clave propia o configura .env'}`));
+ const allowedHosts=(process.env.SERVER_ALLOWED_HOSTS||'').split(',').map(s=>s.trim()).filter(Boolean);
+ createApp({defaults,allowedHosts}).listen(port,process.env.HOST||'127.0.0.1',()=>console.log(`co-CGAR listo en http://localhost:${port}\nServer default: ${defaults?defaults.provider+' / '+defaults.model+' (protegido por contraseña)':'sin configurar; usa una clave propia o configura .env'}`));
 }
