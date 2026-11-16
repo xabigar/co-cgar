@@ -74,4 +74,27 @@ Referencia de comportamiento: [ChatinVis LLMPanel](https://github.com/onekin/Cha
 
 Documentación de protocolos: [Anthropic Messages](https://platform.claude.com/docs/en/api/messages/create), [Gemini compatible con OpenAI](https://ai.google.dev/gemini-api/docs/openai), [Groq](https://console.groq.com/docs/overview), [DeepSeek](https://api-docs.deepseek.com/).
 
+## Despliegue público (Docker + nginx + HTTPS)
+
+Incluye `Dockerfile`, `docker-compose.yml` y `.dockerignore`. El contenedor escucha internamente en `0.0.0.0:3000` y el compose publica únicamente `127.0.0.1:3007` en el host; nginx hace de proxy con TLS.
+
+```sh
+# En el servidor, con el código y el .env en su sitio:
+docker compose up -d --build
+```
+
+En `.env` del servidor, añade el host público para levantar la protección anti-DNS-rebinding:
+
+```dotenv
+SERVER_ALLOWED_HOSTS=cgar.garmendia.eus
+```
+
+Configuración nginx equivalente a la del resto de aplicaciones (proxy a `127.0.0.1:3007`, `proxy_buffering off`, `proxy_read_timeout 300s`) y certificado:
+
+```sh
+certbot --nginx -d cgar.garmendia.eus --redirect --non-interactive --agree-tos --register-unsafely-without-email
+```
+
+El servidor sigue validando el `Host` y el `Origin` de cada petición: solo se aceptan `localhost`, `127.0.0.1`, `[::1]` y los hosts listados en `SERVER_ALLOWED_HOSTS`. Expuesto públicamente, cualquiera puede usar la aplicación con sus propias claves; la clave del Server default queda protegida por la contraseña (10 intentos por IP cada 15 minutos).
+
 Las pruebas de integración usan respuestas simuladas: verifican el transporte de los seis proveedores, desbloqueo, bloqueo, caducidad, limitación de intentos, rechazo de peticiones de otro origen y que el cliente no pueda redirigir la clave del servidor. Las llamadas reales requieren tus credenciales.
