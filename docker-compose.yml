@@ -1,0 +1,10 @@
+name: cgar
+services:
+  app:
+    build: .
+    image: cgar-app
+    container_name: cgar
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:3007:3000"
